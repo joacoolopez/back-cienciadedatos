@@ -1,5 +1,8 @@
 fastapi
 uvicorn
-scikit-learn
+pymongo
+passlib[bcrypt]
+python-dotenv
+pyjwt
 pandas
 joblib
