@@ -1,5 +1,6 @@
 import os
 from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
 from passlib.context import CryptContext
@@ -32,6 +33,22 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 modelo_diabetes = joblib.load('./ml_models/modelo_diabetes_rf.pkl')
 modelo_cardiaco = joblib.load('./ml_models/modelo_random_forest_diabetes.pkl')
+
+origins = [
+    "http://localhost",  # Origenes específicos
+    "http://localhost:3000",  # Por ejemplo, si tienes un frontend en React
+    "https://tudominio.com",  # Agrega otros orígenes permitidos
+    "*",  # Permitir todos los orígenes (usar con precaución en producción)
+]
+
+# Añadir el middleware de CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Orígenes permitidos
+    allow_credentials=True,
+    allow_methods=["*"],  # Métodos HTTP permitidos
+    allow_headers=["*"],  # Headers permitidos
+)
 
 @app.get("/")
 async def root():

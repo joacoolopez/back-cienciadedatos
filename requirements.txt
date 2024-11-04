@@ -6,3 +6,4 @@ python-dotenv
 pyjwt
 pandas
 joblib
+scikit-learn
