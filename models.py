@@ -17,24 +17,14 @@ class PredictionCardiacoInput(BaseModel):
     BloodGlucoseLevel: float
 
 class PredictionDiabetesInput(BaseModel):
-    HighBP: int
-    HighChol: int
-    CholCheck: int
-    BMI: float
-    Smoker: int
-    Stroke: int
-    HeartDiseaseorAttack: int
-    PhysActivity: int
-    Fruits: int
-    Veggies: int
-    HvyAlcoholConsump: int
-    AnyHealthcare: int
-    NoDocbcCost: int
     GenHlth: int
-    MentHlth: int
-    PhysHlth: int
+    HighBP: int
+    BMI: float
     DiffWalk: int
-    Sex: int
+    HighChol: int
     Age: int
-    Education: int
+    HeartDiseaseorAttack: int
+    PhysHlth: int
     Income: int
+    Education: int
+    ultimo_ano_al_medico: bool 

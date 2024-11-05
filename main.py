@@ -1,17 +1,15 @@
 import os
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from pymongo import MongoClient
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
-from typing import Optional
 import jwt
 from dotenv import load_dotenv
 import joblib
 import pandas as pd
 from models import User, UserResponse, PredictionDiabetesInput, PredictionCardiacoInput
-from utils import hash_password, verify_password, create_access_token
+from utils import hash_password, verify_password, create_access_token, get_current_user
 
 load_dotenv()
 
@@ -28,10 +26,11 @@ client = MongoClient(MONGO_URI)
 db = client["CienciaDeDatos"]
 users_collection = db["users"]
 historial_collection = db["historial_diabetes"]
+historial_cardiaco_collection = db["historial_cardiaco"]
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-modelo_diabetes = joblib.load('./ml_models/modelo_diabetes_rf.pkl')
+modelo_diabetes = joblib.load('./ml_models/modelo_diabetes_rf_reducido.pkl')
 modelo_cardiaco = joblib.load('./ml_models/modelo_random_forest_diabetes.pkl')
 
 origins = [
@@ -91,38 +90,19 @@ def read_users_me(authorization: str = Header(...)):
 
 
 @app.post("/predict-diabetes")
-def predictDiabetes(input_data: PredictionDiabetesInput, username: str = Depends(read_users_me)):
+def predictDiabetes(input_data: PredictionDiabetesInput):
     try:
+
+        feature_names = modelo_diabetes.feature_importances_ 
+        print(feature_names)
         # Convertir la entrada a DataFrame
         input_data_df = pd.DataFrame([input_data.dict()])
         
-        # Añadir la columna 'Diabetes_012' inicializada a 0
-        input_data_df['Diabetes_012'] = 0
 
         # Definir las columnas del modelo
-        columnas_modelo = [
-            'HighBP',
-            'HighChol',
-            'CholCheck',
-            'BMI',
-            'Smoker',
-            'Stroke',
-            'HeartDiseaseorAttack',
-            'PhysActivity',
-            'Fruits',
-            'Veggies',
-            'HvyAlcoholConsump',
-            'AnyHealthcare',
-            'NoDocbcCost',
-            'GenHlth',
-            'MentHlth',
-            'PhysHlth',
-            'DiffWalk',
-            'Sex',
-            'Age',
-            'Education',
-            'Income'
-        ]
+        columnas_modelo = ['GenHlth', 'HighBP', 'BMI', 'DiffWalk', 'HighChol', 
+                        'Age', 'HeartDiseaseorAttack', 'PhysHlth', 'Income', 'Education']
+
 
         input_data_df = input_data_df[columnas_modelo]
         
@@ -132,10 +112,10 @@ def predictDiabetes(input_data: PredictionDiabetesInput, username: str = Depends
         resultado_diabetes = "positivo" if probabilidad_diabetes[0] > 0.5 else "negativo"
 
         historial_data = {
-            "username": username["username"],
             "resultado": resultado_diabetes,
             "probabilidad": probabilidad_diabetes[0],
-            "fecha": datetime.utcnow()
+            "fecha": datetime.utcnow(),
+            **input_data.dict() 
         }
         
         historial_collection.insert_one(historial_data)
@@ -155,7 +135,17 @@ def predictCardiaco(input_data: PredictionCardiacoInput):
 
         input_df.columns = columnas_modelo
         
-        probabilidad = modelo_cardiaco.predict_proba(input_df)[:, 1]  
+        probabilidad = modelo_cardiaco.predict_proba(input_df)[:, 1]
+        
+        # Crear un historial de la predicción
+        historial_data = {
+            "probabilidad": probabilidad[0],
+            "fecha": datetime.utcnow(),
+            **input_data.dict()  # Desempaquetar los valores de entrada
+        }
+
+        # Insertar el historial en la colección de historial cardíaco
+        historial_cardiaco_collection.insert_one(historial_data)
 
         return {"probabilidad_cardiaco": probabilidad[0]}
         
@@ -163,8 +153,8 @@ def predictCardiaco(input_data: PredictionCardiacoInput):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error en la predicción: {str(e)}")
     
-@app.get("/historial")
-def get_historial():
+@app.get("/historial-diabetes")
+def get_historial(current_user: dict = Depends(get_current_user)):
     try:
         historial = list(historial_collection.find())
         for entry in historial:
@@ -173,24 +163,12 @@ def get_historial():
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al obtener el historial: {str(e)}")
     
-
-@app.get("/historial-usuario")
-def get_historial_usuario(authorization: str = Header(...)):
-    token = authorization.split(" ")[1]  # Obtener el token del encabezado Bearer
+@app.get("/historial-cardiaco")
+def get_historial(current_user: dict = Depends(get_current_user)):
     try:
-        # Decodificar el token para obtener el nombre de usuario
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(status_code=401, detail="Token inválido")
-
-        # Obtener el historial del usuario
-        historial = list(historial_collection.find({"username": username}))
+        historial = list(historial_cardiaco_collection.find())
         for entry in historial:
             entry["_id"] = str(entry["_id"])  # Convertir el ObjectId a string para su visualización
         return historial
-
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Token inválido o expirado")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error al obtener el historial de {username}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error al obtener el historial: {str(e)}")

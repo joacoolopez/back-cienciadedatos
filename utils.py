@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 import jwt
 from dotenv import load_dotenv
-
+from fastapi import FastAPI, HTTPException, Depends, Header, status
+from typing import Optional
 
 load_dotenv()
 
@@ -19,6 +20,7 @@ client = MongoClient(MONGO_URI)
 db = client["CienciaDeDatos"]
 users_collection = db["users"]
 historial_collection = db["historial_diabetes"]
+historial_cardiaco_collection = db["historial_cardiaco"]
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -36,3 +38,17 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def get_current_user(authorization: Optional[str] = Header(None)):
+    if authorization is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta el token de autorización")
+    
+    token = authorization.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+        return {"username": username}
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado")
